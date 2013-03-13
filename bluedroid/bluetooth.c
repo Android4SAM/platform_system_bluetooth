@@ -22,6 +22,7 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <dirent.h>
 
 #include <cutils/log.h>
 #include <cutils/properties.h>
@@ -151,7 +152,42 @@ int bt_enable() {
     int ret = -1;
     int hci_sock = -1;
     int attempt;
+    int flag = 0;
+    int fd;
+    int sz;
+    int id;
+    char path[64];
+    char buf[16];
+    char *p;
+    DIR *dir;
+    struct dirent *de;
+    //check if the device is plug in or not.
+    if (!(dir = opendir("/sys/class/rfkill"))){
+        LOGE("opendir failed(%s)",strerror(errno));
+    }
 
+    while ((de = readdir(dir))){
+        if (!strcmp(de->d_name, ".")||!strcmp(de->d_name, ".."))
+            continue;
+        p = de->d_name + 6;
+        id = atoi(p);
+        snprintf(path,sizeof(path),"/sys/class/rfkill/rfkill%d/type",id);
+        fd = open(path,O_RDONLY);
+        if (fd < 0){
+            LOGW("open(%s)failed:%s(%d)\n", path, strerror(errno), errno);
+            return -1;
+        }
+        sz = read(fd,&buf,sizeof(buf));
+        close(fd);
+        if (sz >= 9 && memcmp(buf, "bluetooth", 9)==0){
+            flag = 1;
+            break;
+        }
+    }
+    closedir(dir);
+    if (flag == 0)
+        goto out;
+    /*
     if (set_bluetooth_power(1) < 0) goto out;
 
     LOGI("Starting hciattach daemon");
@@ -160,7 +196,7 @@ int bt_enable() {
         set_bluetooth_power(0);
         goto out;
     }
-
+    */
     // Try for 10 seconds, this can only succeed once hciattach has sent the
     // firmware and then turned on hci device via HCIUARTSETPROTO ioctl
     for (attempt = 1000; attempt > 0;  attempt--) {
@@ -186,14 +222,14 @@ int bt_enable() {
         if (property_set("ctl.stop", "hciattach") < 0) {
             LOGE("Error stopping hciattach");
         }
-        set_bluetooth_power(0);
+      /*  set_bluetooth_power(0);*/
         goto out;
     }
 
     LOGI("Starting bluetoothd deamon");
     if (property_set("ctl.start", "bluetoothd") < 0) {
         LOGE("Failed to start bluetoothd");
-        set_bluetooth_power(0);
+       /* set_bluetooth_power(0);*/
         goto out;
     }
 
@@ -220,7 +256,7 @@ int bt_disable() {
     hci_sock = create_hci_sock();
     if (hci_sock < 0) goto out;
     ioctl(hci_sock, HCIDEVDOWN, HCI_DEV_ID);
-
+    /*
     LOGI("Stopping hciattach deamon");
     if (property_set("ctl.stop", "hciattach") < 0) {
         LOGE("Error stopping hciattach");
@@ -230,6 +266,7 @@ int bt_disable() {
     if (set_bluetooth_power(0) < 0) {
         goto out;
     }
+    */
     ret = 0;
 
 out:
